@@ -1,13 +1,14 @@
 use bevy::prelude::*;
 use bevy_mod_outline::{OutlinePlugin, OutlineVolume};
 
-use crate::{gizmos::{AxesGizmos, draw_gizmo_axes, set_gizmo_settings}, helper::cycle_axis_states, rotate::rotation, trackball::trackball_rotation, translate::translation};
+use crate::{gizmos::{AxesGizmos, draw_gizmo_axes, set_gizmo_settings}, helper::cycle_axis_states, rotate::rotation, scale::scaling, trackball::trackball_rotation, translate::translation};
 
 mod translate;
 mod trackball;
 mod rotate;
 pub(crate) mod helper;
 pub mod gizmos;
+mod scale;
 
 pub struct BlenderTransformGizmoPlugin;
 
@@ -66,6 +67,10 @@ impl Plugin for BlenderTransformGizmoPlugin {
             in_state(BlenderTransformGizmoState::Rotate)
         ));
 
+        app.add_systems(Update, scaling.run_if(
+            in_state(BlenderTransformGizmoState::Scale)
+        ));
+
         app.add_systems(Last, handle_clicklist.run_if(
             in_state(BlenderTransformGizmoState::None))
         );
@@ -83,11 +88,21 @@ impl Plugin for BlenderTransformGizmoPlugin {
 
 #[derive(Resource, Clone, Copy, Reflect)]
 #[reflect(Resource)]
-pub struct SelectedEntity(pub Entity, pub Transform, pub Vec2);
+pub struct SelectedEntity{
+    pub entity: Entity,
+    pub start_transform: Transform,
+    pub start_vp: Vec2,
+    pub accum_delta: Vec2,
+}
 
 impl Default for SelectedEntity{
     fn default() -> Self {
-        Self(Entity::PLACEHOLDER, Transform::default(), Vec2::ZERO)
+        Self{
+            entity: Entity::PLACEHOLDER,
+            start_transform: Transform::default(),
+            start_vp: Vec2::ZERO,
+            accum_delta: Vec2::ZERO,
+        }
     }
 }
 
@@ -181,6 +196,10 @@ fn selectable(
     clicklist.0.push(click.entity);
 }
 
+
+// was having trouble with entity selection because the window would be
+// selected last, i think you can turn that off but then this would have
+// to change again, and i don't really know how that would work.
 fn handle_clicklist(
     mut clicklist: ResMut<ClickList>,
     mut selected_entity: ResMut<SelectedEntity>,
@@ -207,16 +226,16 @@ fn handle_clicklist(
                 } 
             }
         }
-        if selected_entity.0 != Entity::PLACEHOLDER {
-            commands.entity(selected_entity.0).try_remove::<OutlineVolume>();
+        if selected_entity.entity != Entity::PLACEHOLDER {
+            commands.entity(selected_entity.entity).try_remove::<OutlineVolume>();
         }
-        selected_entity.0 = current;
-        commands.entity(selected_entity.0).try_insert(OutlineVolume{
+        selected_entity.entity = current;
+        commands.entity(selected_entity.entity).try_insert(OutlineVolume{
             visible: true,
             width: 2.0,
             colour: Color::srgb(1.0, 1.0, 0.0),
         });
-        selected_entity.1 = transform;
+        selected_entity.start_transform = transform;
         next_transform_state.set(BlenderTransformGizmoState::None);
         clicklist.0.clear();
 
@@ -240,8 +259,6 @@ fn switch_main_state(
     mouse_button_input: Res<ButtonInput<MouseButton>>,
     keybinds: Res<BlenderTransformKeybinds>,
     settings: Res<BlenderTransformSettings>,
-    window: Single<&Window>,
-    camera_s: Single<(&Camera, &GlobalTransform)>,
 
 ){
     type MainState = BlenderTransformGizmoState;
@@ -250,10 +267,6 @@ fn switch_main_state(
         next_transform_state.set(MainState::Translate);
         next_axis_state.set(AxisState::Camera);
         next_orientation_state.set(settings.default_orientation);
-        let Ok(obj) = camera_s.0.world_to_viewport(camera_s.1, selected_entity.1.translation) else { return; };
-
-        let Some(cursor) = window.cursor_position() else { return; };
-        selected_entity.2 = obj - cursor;
         
 
     }
@@ -288,8 +301,8 @@ fn switch_main_state(
     if (keyboard_input.just_pressed(keybinds.confirm_key)  ||
         mouse_button_input.just_pressed(MouseButton::Left))
         && *main_state.get() != MainState::None {
-        if let Ok(t) = t_q.get(selected_entity.0) {
-            selected_entity.1 = t.compute_transform();
+        if let Ok(t) = t_q.get(selected_entity.entity) {
+            selected_entity.start_transform = t.compute_transform();
             next_transform_state.set(MainState::None);
             next_axis_state.set(AxisState::Camera);
             next_orientation_state.set(settings.default_orientation);
@@ -377,9 +390,22 @@ fn switch_axis_state(
 fn reset_selected(
     mut selected_entity: ResMut<SelectedEntity>,
     t_q: TransformHelper,
+    camera_s: Single<(&Camera, &GlobalTransform)>,
+    transform_state: Res<State<BlenderTransformGizmoState>>,
+    
 ) {
-    if let Ok(t) = t_q.compute_global_transform(selected_entity.0) {
-        selected_entity.1 = t.compute_transform();
+
+    if let Ok(t) = t_q.compute_global_transform(selected_entity.entity) {
+        selected_entity.start_transform = t.compute_transform();
+        selected_entity.accum_delta = match transform_state.get(){
+            BlenderTransformGizmoState::Scale => Vec2::ONE, //so we don't multiply by 0 to start with..
+            _ => Vec2::ZERO,
+        };
+
+        let (camera, camera_gt) = *camera_s;
+
+        let Ok(obj_pos) = camera.world_to_viewport(camera_gt, selected_entity.start_transform.translation) else { return; };
+        selected_entity.start_vp = obj_pos;
     }
     
 }
@@ -388,27 +414,27 @@ fn reset_transform(
     selected_entity: Res<SelectedEntity>,
     mut t_ps: ParamSet<(
         Query<(&mut Transform, Option<&ChildOf>)>,
-        TransformHelper,
+       TransformHelper,
     )>,
     parent_q: Query<&ChildOf>,
     
 ) {
-    if let Ok(parent) = parent_q.get(selected_entity.0) {
+    if let Ok(parent) = parent_q.get(selected_entity.entity) {
         
         let parent_gt = t_ps.p1().compute_global_transform(parent.0).unwrap_or_default();
         let parent_affine = parent_gt.affine().inverse();
-        let new_affine = parent_affine * selected_entity.1.compute_affine();
+        let new_affine = parent_affine * selected_entity.start_transform.compute_affine();
         let new_t = Transform::from_matrix(
             Mat4::from_mat3_translation(new_affine.matrix3.into(), new_affine.translation.into())
         );
 
         
-        if let Ok((mut t, _)) = t_ps.p0().get_mut(selected_entity.0) {
+        if let Ok((mut t, _)) = t_ps.p0().get_mut(selected_entity.entity) {
             *t = new_t;
         }
     } else {
-        if let Ok((mut t, _)) = t_ps.p0().get_mut(selected_entity.0) {
-            *t = selected_entity.1;
+        if let Ok((mut t, _)) = t_ps.p0().get_mut(selected_entity.entity) {
+            *t = selected_entity.start_transform;
             
         }
     }

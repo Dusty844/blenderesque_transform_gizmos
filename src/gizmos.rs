@@ -16,7 +16,7 @@ pub(crate) fn draw_gizmo_axes(
     orientation_state: Res<State<OrientationState>>,
     cam: Single<(&Camera, &GlobalTransform)>
 ){
-    let pos = selected_entity.1.translation;
+    let pos = selected_entity.start_transform.translation;
 
     let x_axis_color = Color::oklcha(0.5232, 0.1404, 13.84, 1.0);   // red
     let y_axis_color = Color::oklcha(0.5050, 0.1315, 145.0, 1.0);  // green
@@ -29,7 +29,7 @@ pub(crate) fn draw_gizmo_axes(
     match orientation_state.get() {
         OrientationState::Global => {}
         OrientationState::Local => {
-            if let Ok(parent) = parent_q.get(selected_entity.0) {
+            if let Ok(parent) = parent_q.get(selected_entity.entity) {
                 if let Ok(p_t) = t_q.get(parent.0) {
                     x_dir = p_t.rotation() * x_dir;
                     y_dir = p_t.rotation() * y_dir;

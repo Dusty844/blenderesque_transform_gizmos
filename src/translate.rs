@@ -1,4 +1,4 @@
-use bevy::{camera::Camera, ecs::{hierarchy::ChildOf, system::{ParamSet, Query, Res, Single}}, math::{Dir3, Mat4, Quat, Vec3, primitives::InfinitePlane3d}, state::state::State, transform::{components::{GlobalTransform, Transform}, helper::TransformHelper}, window::Window};
+use bevy::{camera::Camera, ecs::{hierarchy::ChildOf, system::{ParamSet, Query, Res, ResMut, Single}}, input::mouse::AccumulatedMouseMotion, math::{Dir3, Mat4, Quat, Vec3, primitives::InfinitePlane3d}, state::state::State, transform::{components::{GlobalTransform, Transform}, helper::TransformHelper}};
 
 use crate::{AxisState, OrientationState, SelectedEntity, helper::{find_best_dir, orientation_rotation}};
 
@@ -6,7 +6,8 @@ use crate::{AxisState, OrientationState, SelectedEntity, helper::{find_best_dir,
 
 
 pub(crate) fn translation(
-    selected_entity: Res<SelectedEntity>,
+    mouse_motion: Res<AccumulatedMouseMotion>,
+    mut selected_entity: ResMut<SelectedEntity>,
     parent_q: Query<&ChildOf>,
     mut t_ps: ParamSet<(
         Query<(&mut Transform, Option<&ChildOf>)>,
@@ -15,15 +16,14 @@ pub(crate) fn translation(
     camera_s: Single<(&Camera, &GlobalTransform)>,
     axis_state: Res<State<AxisState>>,
     orientation_state: Res<State<OrientationState>>,
-    window: Single<&Window>,
 ){
-    let parent_gt = if let Ok(parent) = parent_q.get(selected_entity.0) {
+    let parent_gt = if let Ok(parent) = parent_q.get(selected_entity.entity) {
         t_ps.p1().compute_global_transform(parent.0).unwrap_or_default()
-    } else {
+    } else { 
         GlobalTransform::default()
     };
 
-    let mut current_transform = t_ps.p1().compute_global_transform(selected_entity.0)
+    let mut current_transform = t_ps.p1().compute_global_transform(selected_entity.entity)
         .unwrap_or_default().compute_transform();
 
     let current_world_pos = current_transform.translation;
@@ -31,15 +31,9 @@ pub(crate) fn translation(
     
     let (camera, camera_gt) = *camera_s;
 
-
-    let Some(cursor_pos) = window.physical_cursor_position() else {
-        return;
-    };
+    selected_entity.accum_delta += mouse_motion.delta;
         
-
-    let target_viewport = cursor_pos + selected_entity.2;
-        
-    let Ok(ray) = camera.viewport_to_world(camera_gt, target_viewport) else {
+    let Ok(ray) = camera.viewport_to_world(camera_gt, selected_entity.start_vp + selected_entity.accum_delta) else {
         return;
     };
 
@@ -120,7 +114,7 @@ pub(crate) fn translation(
     );
 
         
-    if let Ok((mut t, _)) = t_ps.p0().get_mut(selected_entity.0) {
+    if let Ok((mut t, _)) = t_ps.p0().get_mut(selected_entity.entity) {
         *t = new_t;
     }
                 

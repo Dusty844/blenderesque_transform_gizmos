@@ -13,12 +13,12 @@ pub(crate) fn trackball_rotation(
         TransformHelper,
     )>,
 ){
-    let parent_gt = if let Ok(parent) = parent_q.get(selected_entity.0) {
+    let parent_gt = if let Ok(parent) = parent_q.get(selected_entity.entity) {
         t_ps.p1().compute_global_transform(parent.0).unwrap_or_default()
     } else {
         GlobalTransform::default()
     };
-    let mut current_transform = t_ps.p1().compute_global_transform(selected_entity.0)
+    let mut current_transform = t_ps.p1().compute_global_transform(selected_entity.entity)
         .unwrap_or_default().compute_transform();
 
     current_transform.rotate_y(mouse_motion.delta.x * 0.01);
@@ -31,7 +31,7 @@ pub(crate) fn trackball_rotation(
     );
 
         
-    if let Ok((mut t, _)) = t_ps.p0().get_mut(selected_entity.0) {
+    if let Ok((mut t, _)) = t_ps.p0().get_mut(selected_entity.entity) {
         *t = new_t;
     }
         

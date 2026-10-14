@@ -1,9 +1,8 @@
 use bevy::{
-    dev_tools::infinite_grid::{InfiniteGrid, InfiniteGridPlugin, InfiniteGridSettings}, input::common_conditions::input_toggle_active, prelude::*
+    dev_tools::infinite_grid::{InfiniteGrid, InfiniteGridPlugin, InfiniteGridSettings}, input::common_conditions::input_toggle_active, prelude::*, window::{CursorGrabMode, CursorOptions}
 };
 
 
-use bevy_mod_outline::*;
 
 use bevy_egui::EguiPlugin;
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
@@ -15,7 +14,7 @@ fn main() {
         .add_plugins((DefaultPlugins, BlenderTransformGizmoPlugin, InfiniteGridPlugin))
         .add_plugins(EguiPlugin::default())
         .add_plugins(WorldInspectorPlugin::default().run_if(input_toggle_active(true, KeyCode::Tab)))
-        .add_systems(Startup, scene.spawn())
+        .add_systems(Startup, (scene.spawn(), toggle_cursor))
         .run();
 }
 
@@ -64,4 +63,6 @@ fn scene() -> impl SceneList {
 }
 
 
-
+fn toggle_cursor(mut cursor_options: Single<&mut CursorOptions>) {
+    cursor_options.grab_mode = CursorGrabMode::Confined;
+}
