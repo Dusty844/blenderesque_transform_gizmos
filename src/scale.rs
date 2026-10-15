@@ -1,6 +1,6 @@
 use bevy::{input::mouse::AccumulatedMouseMotion, prelude::*};
 
-use crate::{AxisState, OrientationState, SelectedEntity};
+use crate::{AxisState, BlenderTransformKeybinds, BlenderTransformSettings, OrientationState, SelectedEntity};
 
 
 
@@ -16,6 +16,9 @@ pub(crate) fn scaling(
     camera_s: Single<(&Camera, &GlobalTransform)>,
     axis_state: Res<State<AxisState>>,
     orientation_state: Res<State<OrientationState>>,
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+    settings: Res<BlenderTransformSettings>,
+    keybinds: Res<BlenderTransformKeybinds>,
 
 ){
     let parent_gt = if let Ok(parent) = parent_q.get(selected_entity.entity) {
@@ -37,7 +40,6 @@ pub(crate) fn scaling(
     let dist = (cursor_pos - centre).length();
     let prev_dist = (prev_cursor_pos - centre).length();
 
-    // Avoid dividing by ~0 when the cursor is right on the centre
     if prev_dist < 0.1 {
         selected_entity.accum_delta.x *= 1.0;
     } else {
@@ -54,7 +56,7 @@ pub(crate) fn scaling(
         OrientationState::View => camera_gt.rotation(),
     };
 
-    let k = match axis_state.get() {
+    let mut k = match axis_state.get() {
         AxisState::X => vec3(factor, 1.0, 1.0),
         AxisState::Y => vec3(1.0, factor, 1.0),
         AxisState::Z => vec3(1.0, 1.0, factor),
@@ -64,7 +66,14 @@ pub(crate) fn scaling(
         _ => Vec3::splat(factor),
     };
 
-    // World-space scaling matrix
+    // locking k instead of scale is probably the better idea, we do
+    // all this stuff between then to deal with shear, it would be a pain to
+    // reintroduce it.
+    if keyboard_input.pressed(keybinds.grid_snap){
+        k = (k/settings.scale_grid_snap).round() * settings.scale_grid_snap;
+    }
+
+    // World-space 
     let f = Mat3::from_quat(p_r);
     let g = f * Mat3::from_diagonal(k) * f.transpose();
 
@@ -73,7 +82,8 @@ pub(crate) fn scaling(
         * Mat3::from_diagonal(current_transform.scale);
 
     let m2 = g * m;
-    let signs = current_transform.scale.signum(); 
+    let signs = current_transform.scale.signum();
+     
     current_transform.scale = vec3(
         m2.x_axis.length(),
         m2.y_axis.length(),

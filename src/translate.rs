@@ -1,6 +1,6 @@
-use bevy::{camera::Camera, ecs::{hierarchy::ChildOf, system::{ParamSet, Query, Res, ResMut, Single}}, input::mouse::AccumulatedMouseMotion, math::{Dir3, Mat4, Quat, Vec3, primitives::InfinitePlane3d}, state::state::State, transform::{components::{GlobalTransform, Transform}, helper::TransformHelper}};
+use bevy::{camera::Camera, ecs::{hierarchy::ChildOf, system::{ParamSet, Query, Res, ResMut, Single}}, input::{ButtonInput, keyboard::KeyCode, mouse::AccumulatedMouseMotion}, math::{Dir3, Mat4, Quat, Vec3, primitives::InfinitePlane3d}, state::state::State, transform::{components::{GlobalTransform, Transform}, helper::TransformHelper}};
 
-use crate::{AxisState, OrientationState, SelectedEntity, helper::{find_best_dir, orientation_rotation}};
+use crate::{AxisState, BlenderTransformKeybinds, BlenderTransformSettings, OrientationState, SelectedEntity, helper::{find_best_dir, orientation_rotation}};
 
 
 
@@ -16,6 +16,9 @@ pub(crate) fn translation(
     camera_s: Single<(&Camera, &GlobalTransform)>,
     axis_state: Res<State<AxisState>>,
     orientation_state: Res<State<OrientationState>>,
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+    settings: Res<BlenderTransformSettings>,
+    keybinds: Res<BlenderTransformKeybinds>,
 ){
     let parent_gt = if let Ok(parent) = parent_q.get(selected_entity.entity) {
         t_ps.p1().compute_global_transform(parent.0).unwrap_or_default()
@@ -23,9 +26,7 @@ pub(crate) fn translation(
         GlobalTransform::default()
     };
 
-    let mut current_transform = t_ps.p1().compute_global_transform(selected_entity.entity)
-        .unwrap_or_default().compute_transform();
-
+    let mut current_transform = selected_entity.start_transform;
     let current_world_pos = current_transform.translation;
 
     
@@ -106,6 +107,14 @@ pub(crate) fn translation(
         _ => {}
     }
     current_transform.translation += offset;
+
+    if keyboard_input.pressed(keybinds.grid_snap){
+        let local_space = p_r.inverse() * (current_transform.translation - selected_entity.start_transform.translation);
+
+        let stepped = (local_space / settings.translation_grid_snap).round() * settings.translation_grid_snap;
+
+        current_transform.translation = p_r * (stepped + selected_entity.start_transform.translation);
+    }
 
     let parent_affine = parent_gt.affine().inverse();
     let new_affine = parent_affine * current_transform.compute_affine();

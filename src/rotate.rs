@@ -1,6 +1,6 @@
 use bevy::{input::mouse::AccumulatedMouseMotion, prelude::*};
 
-use crate::{AxisState, OrientationState, SelectedEntity, helper::{find_best_dir, orientation_rotation}};
+use crate::{AxisState, BlenderTransformKeybinds, BlenderTransformSettings, OrientationState, SelectedEntity, helper::{find_best_dir, orientation_rotation}};
 
 
 
@@ -16,6 +16,10 @@ pub(crate) fn rotation(
     axis_state: Res<State<AxisState>>,
     orientation_state: Res<State<OrientationState>>,
     window: Single<&Window>,
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+    settings: Res<BlenderTransformSettings>,
+    keybinds: Res<BlenderTransformKeybinds>,
+
 ) {
     let parent_gt = if let Ok(parent) = parent_q.get(selected_entity.entity) {
         t_ps.p1().compute_global_transform(parent.0).unwrap_or_default()
@@ -59,9 +63,15 @@ pub(crate) fn rotation(
             find_best_dir(camera_gt.forward(), candidates.to_vec())
         }
     };
-    
+    let snap = settings.rotation_grid_snap.to_radians();
 
-    current_transform.rotate_axis(axis, selected_entity.accum_delta.x);
+    let mut angle = selected_entity.accum_delta.x;
+
+    if keyboard_input.pressed(keybinds.grid_snap){
+        angle = (angle / snap).round() * snap;
+    }
+
+    current_transform.rotate_axis(axis, angle);
 
     let parent_affine = parent_gt.affine().inverse();
     let new_affine = parent_affine * current_transform.compute_affine();

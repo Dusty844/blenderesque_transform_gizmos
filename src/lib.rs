@@ -116,7 +116,7 @@ pub struct BlenderTransformKeybinds{
     pub y_axis_key: KeyCode,
     pub z_axis_key: KeyCode,
     pub invert_key: KeyCode,
-    pub grid_snap_toggle: KeyCode,
+    pub grid_snap: KeyCode,
     pub exit_key: KeyCode,
     pub confirm_key: KeyCode,
 }
@@ -131,7 +131,7 @@ impl Default for BlenderTransformKeybinds{
             y_axis_key: KeyCode::KeyY,
             z_axis_key: KeyCode::KeyZ,
             invert_key: KeyCode::ShiftLeft,
-            grid_snap_toggle: KeyCode::ControlLeft,
+            grid_snap: KeyCode::ControlLeft,
             exit_key: KeyCode::Escape,
             confirm_key: KeyCode::Enter,
         }
@@ -142,12 +142,22 @@ impl Default for BlenderTransformKeybinds{
 #[reflect(Resource)]
 pub struct BlenderTransformSettings{
     pub default_orientation: OrientationState,
+    pub translation_grid_snap: f32, //f32 or vec3?
+    pub rotation_grid_snap: f32,
+    pub scale_grid_snap: f32,
+    pub trackball_grid_snap: f32,
+    
+
 }
 
 impl Default for BlenderTransformSettings {
     fn default() -> Self {
         Self{
             default_orientation: OrientationState::Global,
+            translation_grid_snap: 1.0,
+            rotation_grid_snap: 5.0, //in degrees
+            scale_grid_snap: 0.1,
+            trackball_grid_snap: 5.0,
         }
     }
 }
